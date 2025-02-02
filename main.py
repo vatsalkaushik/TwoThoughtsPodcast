@@ -46,10 +46,38 @@ def get_tweets():
             
             # Generate conversation using OpenAI
             chat_completion = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="o1-mini",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant engaging in a conversation about a tweet. Provide thoughtful insights and ask relevant questions about the content."},
-                    {"role": "user", "content": f"Let's discuss this tweet: {latest_tweet['text']}"}
+                    {"role": "user", "content": """You are to generate a natural, 5-minute conversation between two people—Mark (male) and Sarah (female)—for a podcast called "Two Thoughts." The conversation should focus on two quotes from a single thinker. Follow these instructions:
+                        Introduction:
+                          - Start with a single-line welcome from Sarah: "Hi, welcome to another episode of 'Two Thoughts.' Today we have two thoughts from [THINKER’S NAME]."
+                        Thinker’s Background:
+                          - Have Sarah introduce the thinker to Mark immediately after the welcome, discussing their background, historical context, and significance.
+                          - Discussion of Achievements and Influence
+                          - Mark and Sarah exchange a few comments (2–3 messages) on the thinker’s major achievements, influence, or any key aspects that make this person relevant.
+                        Two Quotes:
+                          - Transition to the two quotes given in the input.
+                          - Before analyzing each quote, read the exact quote out loud in the conversation so listeners can follow along.
+                        
+                        Use the following as loose guidelines:
+                        - Analyze each quote (meaning, relevance, interesting angles)
+                        - Explore related or tangential topics that might be engaging for general listeners
+                        - Look for connections or contradictions between the quotes (if any)
+                        - Share anecdotes or experiences, if helpful
+                        - Share any counterintuitive insights
+                        - Generate any new ideas the quotes inspire
+                        - Feel free to include any other interesting or related topics beyond these guidelines to keep listeners engaged.
+                        
+                        Format: Present the conversation in dialogue form, with speaker names followed by their lines, like:
+                        Sarah: [message]
+                        Mark: [message]
+                        
+                        Tone: Keep the tone casual, friendly, and humorous, as though it’s an actual podcast.
+                        - Aim for about 5 minutes of listening time.
+                        - The name of the podcast is "Two Thoughts"
+                        - Keep it engaging and accessible.
+                        
+                        Here are the two quotes: """ + latest_tweet['text']}
                 ]
             )
             
