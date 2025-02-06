@@ -7,9 +7,27 @@ import threading
 import json
 from elevenlabs import ElevenLabs
 import time
+from functools import wraps
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+# Add this function to verify API key
+def verify_api_key():
+    api_key = request.headers.get('key')
+    expected_key = os.environ.get('APP_API_KEY')
+    if not expected_key:
+        return False
+    return api_key == expected_key
+
+# Add this decorator function
+def require_api_key(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not verify_api_key():
+            return jsonify({'error': 'Unauthorized - Invalid or missing API key'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 def get_captivate_auth_token():
     """Get authentication token from Captivate"""
@@ -122,7 +140,6 @@ def create_audio_from_text(text):
         safe_filename = timestamp
     
     try:
-        # Use our custom conversion that uses requests.post so we can control the timeout
         voice_id = "nPczCjzI2devNBz1zQrb"
         audio_bytes = convert_text_to_speech(voice_id, text)
         
@@ -185,6 +202,7 @@ def index():
     return 'Two Thoughts Flask App!'
 
 @app.route('/todays-tt')
+@require_api_key
 def get_tweets():
     url = "https://api.x.com/2/tweets/search/recent"
     
@@ -276,6 +294,7 @@ def get_tweets():
 
 # Add a new endpoint to check audio generation status
 @app.route('/audio-status/<filename>')
+@require_api_key
 def audio_status(filename):
     json_path = f"static/audio/{filename}.json"
     if os.path.exists(json_path):
