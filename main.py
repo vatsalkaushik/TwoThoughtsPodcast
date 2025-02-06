@@ -35,6 +35,51 @@ def get_captivate_auth_token():
         print(f"Error getting Captivate auth token: {str(e)}")
         return None
 
+def create_captivate_episode(media_data, thinker_name):
+    """Create a new episode in Captivate FM"""
+    url = "https://api.captivate.fm/episodes"
+    
+    try:
+        # Get fresh authentication token
+        auth_token = get_captivate_auth_token()
+        if not auth_token:
+            raise ValueError("Failed to get Captivate authentication token")
+        
+        # Format current date with 8 AM time
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        publish_datetime = f"{current_date} 08:00:00"
+        
+        headers = {
+            'Authorization': f'Bearer {auth_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        show_notes = (
+            f"Two Thoughts from {thinker_name} — curated by Jim O'Shaughnessy, "
+            "brought to life through AI narration and analysis.\n\n"
+            "Buy Two Thoughts on Amazon (https://amzn.id/BMLcqU6) or on infinitebooks.com"
+        )
+        
+        payload = {
+            'shows_id': os.environ.get("CAPTIVATE_SHOW_ID"),
+            'title': f'Two Thoughts from {thinker_name}',
+            'media_id': media_data['media']['id'],
+            'date': publish_datetime,
+            'shownotes': show_notes,
+            'summary': f'Exploring two thought-provoking quotes from {thinker_name}',
+            'author': 'Two Thoughts AI',
+            'episode_type': 'full',
+            'explicit': 'false',
+            'itunes_block': 'false'
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error creating Captivate episode: {str(e)}")
+        return None
+
 def upload_to_captivate(file_path, show_id):
     """Upload audio file to Captivate FM"""
     url = f"https://api.captivate.fm/shows/{show_id}/media"
@@ -91,7 +136,19 @@ def create_audio_from_text(text):
         # Upload to Captivate FM
         show_id = os.environ.get("CAPTIVATE_SHOW_ID")
         if show_id:
-            captivate_response = upload_to_captivate(output_path, show_id)
+            # First upload the media file
+            media_response = upload_to_captivate(output_path, show_id)
+            
+            # If media upload successful, create the episode
+            if media_response and media_response.get('success'):
+                episode_response = create_captivate_episode(media_response, thinker_name)
+                captivate_response = {
+                    'media': media_response,
+                    'episode': episode_response
+                }
+            else:
+                captivate_response = {'media': media_response, 'error': 'Media upload failed'}
+                
             metadata = {
                 "thinker": thinker_name if 'thinker_name' in locals() else "unknown",
                 "timestamp": timestamp,
@@ -127,22 +184,19 @@ def create_audio_from_text(text):
 def index():
     return 'Two Thoughts Flask App!'
 
-@app.route('/tweets')
+@app.route('/todays-tt')
 def get_tweets():
-    # X API endpoint
     url = "https://api.x.com/2/tweets/search/recent"
     
     # Get time 24 hours ago in ISO format
     start_time = datetime.utcnow() - timedelta(days=1)
     
-    # Query parameters
     params = {
         'query': '"two thoughts from" from:jposhaughnessy',
         'start_time': start_time.isoformat() + 'Z',
         'tweet.fields': 'created_at,text'
     }
     
-    # Headers with Bearer token
     headers = {
         'Authorization': f'Bearer {os.environ.get("X_BEARER_TOKEN")}'
     }
@@ -166,7 +220,7 @@ def get_tweets():
                 messages=[
                     {"role": "user", "content": """You are to generate a natural, 3-5 minute monologue for a podcast called "Two Thoughts." The monologue should focus on two quotes from a single thinker. Follow these instructions:
                         Introduction:
-                          - Start with a single-line welcome: "Hi, welcome to another episode of 'Two Thoughts.' Today we have two thoughts from [THINKER'S NAME]."
+                          - Start with a single-line welcome: "Hi... Welcome to another episode of 'Two Thoughts.' Today we have two thoughts from [THINKER'S NAME]."
                         Thinker's Background:
                           - Introduce the thinker, discussing their background, historical context, and significance.
                           - Cover their major achievements, influence, and key aspects that make this person relevant.
@@ -243,12 +297,49 @@ def test_captivate_upload():
         return jsonify({'error': 'CAPTIVATE_SHOW_ID not set'}), 500
         
     try:
-        response = upload_to_captivate(test_file, show_id)
-        return jsonify({
-            'captivate_response': response
-        })
+        # First upload the media file
+        media_response = upload_to_captivate(test_file, show_id)
+        
+        # If media upload successful, create the episode
+        if media_response and media_response.get('success'):
+            episode_response = create_captivate_episode(media_response, "Jim Harrison")
+            return jsonify({
+                'media': media_response,
+                'episode': episode_response
+            })
+        else:
+            return jsonify({
+                'error': 'Media upload failed',
+                'media_response': media_response
+            }), 500
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/test-episode-creation')
+def test_episode_creation():
+    """Test endpoint to create an episode with specific media ID"""
+    try:
+        # Mock media response data structure
+        media_data = {
+            'media': {
+                'id': '4a5f8091-a955-4459-9418-00aa913a2af2'
+            },
+            'success': True
+        }
+        
+        # Create episode with test data
+        episode_response = create_captivate_episode(media_data, "Jim Harrison")
+        
+        return jsonify({
+            'status': 'success',
+            'episode': episode_response
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 def convert_text_to_speech(voice_id, text):
     # Prepare API endpoint and headers based on the ElevenLabs API documentation
