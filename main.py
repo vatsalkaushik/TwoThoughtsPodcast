@@ -11,6 +11,53 @@ import time
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+def get_captivate_auth_token():
+    """Get authentication token from Captivate"""
+    url = "https://api.captivate.fm/authenticate/token"
+    
+    try:
+        user_id = os.environ.get("CAPTIVATE_USER_ID")
+        api_token = os.environ.get("CAPTIVATE_API_TOKEN")
+        
+        if not user_id or not api_token:
+            raise ValueError("Captivate user ID or API token not found in environment variables")
+        
+        data = {
+            'username': user_id,
+            'token': api_token
+        }
+        
+        response = requests.post(url, data=data)
+        response.raise_for_status()
+        auth_data = response.json()
+        return auth_data['user']['token']
+    except Exception as e:
+        print(f"Error getting Captivate auth token: {str(e)}")
+        return None
+
+def upload_to_captivate(file_path, show_id):
+    """Upload audio file to Captivate FM"""
+    url = f"https://api.captivate.fm/shows/{show_id}/media"
+    
+    try:
+        # Get fresh authentication token
+        auth_token = get_captivate_auth_token()
+        if not auth_token:
+            raise ValueError("Failed to get Captivate authentication token")
+            
+        headers = {
+            'Authorization': f'Bearer {auth_token}'
+        }
+        
+        with open(file_path, 'rb') as audio_file:
+            files = {'file': audio_file}
+            response = requests.post(url, files=files, headers=headers)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"Error uploading to Captivate: {str(e)}")
+        return None
+
 def create_audio_from_text(text):
     """Background task to create audio using ElevenLabs API"""
     # Get timestamp
@@ -41,13 +88,24 @@ def create_audio_from_text(text):
         with open(output_path, "wb") as f:
             f.write(audio_bytes)
             
-        # Save success metadata
-        metadata = {
-            "thinker": thinker_name if 'thinker_name' in locals() else "unknown",
-            "timestamp": timestamp,
-            "file_path": output_path,
-            "status": "completed"
-        }
+        # Upload to Captivate FM
+        show_id = os.environ.get("CAPTIVATE_SHOW_ID")
+        if show_id:
+            captivate_response = upload_to_captivate(output_path, show_id)
+            metadata = {
+                "thinker": thinker_name if 'thinker_name' in locals() else "unknown",
+                "timestamp": timestamp,
+                "file_path": output_path,
+                "status": "completed",
+                "captivate": captivate_response
+            }
+        else:
+            metadata = {
+                "thinker": thinker_name if 'thinker_name' in locals() else "unknown",
+                "timestamp": timestamp,
+                "file_path": output_path,
+                "status": "completed"
+            }
         
         with open(f"static/audio/{safe_filename}.json", "w") as f:
             json.dump(metadata, f)
@@ -79,7 +137,7 @@ def get_tweets():
     
     # Query parameters
     params = {
-        'query': 'from:jposhaughnessy "two thoughts from"',
+        'query': '"two thoughts from" from:jposhaughnessy',
         'start_time': start_time.isoformat() + 'Z',
         'tweet.fields': 'created_at,text'
     }
@@ -171,6 +229,26 @@ def audio_status(filename):
             metadata = json.load(f)
         return jsonify(metadata)
     return jsonify({'status': 'not_found'}), 404
+
+@app.route('/test-captivate-upload')
+def test_captivate_upload():
+    """Test endpoint to upload an existing audio file to Captivate"""
+    test_file = "static/audio/jim_harrison_20250206_124948.mp3"
+    
+    if not os.path.exists(test_file):
+        return jsonify({'error': 'Test file not found'}), 404
+        
+    show_id = os.environ.get("CAPTIVATE_SHOW_ID")
+    if not show_id:
+        return jsonify({'error': 'CAPTIVATE_SHOW_ID not set'}), 500
+        
+    try:
+        response = upload_to_captivate(test_file, show_id)
+        return jsonify({
+            'captivate_response': response
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 def convert_text_to_speech(voice_id, text):
     # Prepare API endpoint and headers based on the ElevenLabs API documentation
