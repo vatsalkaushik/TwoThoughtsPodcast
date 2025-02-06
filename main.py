@@ -284,63 +284,6 @@ def audio_status(filename):
         return jsonify(metadata)
     return jsonify({'status': 'not_found'}), 404
 
-@app.route('/test-captivate-upload')
-def test_captivate_upload():
-    """Test endpoint to upload an existing audio file to Captivate"""
-    test_file = "static/audio/jim_harrison_20250206_124948.mp3"
-    
-    if not os.path.exists(test_file):
-        return jsonify({'error': 'Test file not found'}), 404
-        
-    show_id = os.environ.get("CAPTIVATE_SHOW_ID")
-    if not show_id:
-        return jsonify({'error': 'CAPTIVATE_SHOW_ID not set'}), 500
-        
-    try:
-        # First upload the media file
-        media_response = upload_to_captivate(test_file, show_id)
-        
-        # If media upload successful, create the episode
-        if media_response and media_response.get('success'):
-            episode_response = create_captivate_episode(media_response, "Jim Harrison")
-            return jsonify({
-                'media': media_response,
-                'episode': episode_response
-            })
-        else:
-            return jsonify({
-                'error': 'Media upload failed',
-                'media_response': media_response
-            }), 500
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/test-episode-creation')
-def test_episode_creation():
-    """Test endpoint to create an episode with specific media ID"""
-    try:
-        # Mock media response data structure
-        media_data = {
-            'media': {
-                'id': '4a5f8091-a955-4459-9418-00aa913a2af2'
-            },
-            'success': True
-        }
-        
-        # Create episode with test data
-        episode_response = create_captivate_episode(media_data, "Jim Harrison")
-        
-        return jsonify({
-            'status': 'success',
-            'episode': episode_response
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
 def convert_text_to_speech(voice_id, text):
     # Prepare API endpoint and headers based on the ElevenLabs API documentation
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
